@@ -80,7 +80,7 @@ void heap64kb_free(struct heap64kb_t * const obj, void * const ptr) {
 void* heap64kb_alloc(struct heap64kb_t * const obj, const size_t size) {
     struct heap64kbFreeHeader_t * prev = 0;
     struct heap64kbFreeHeader_t * next;
-    const uint16_t requestSize = (uint16_t)(size + 1 & ~HEAP64KB_MASK_IN_USE);
+    const uint16_t requestSize = (uint16_t)(size + 1 & ~1);
 
     if (obj == 0) {
         return 0;

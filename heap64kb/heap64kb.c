@@ -15,6 +15,9 @@ struct heap64kb_t {
 
 #define HEAP64KB_MASK_IN_USE ((uint16_t)1)
 
+#define heap64kb_hdr_to_offset(_base_, _hdr_) (uint16_t)((uintptr_t)_hdr_ - (uintptr_t)_base_)
+#define heap64kb_offset_to_freehdr(_base_, _off_) (struct heap64kbFreeHeader_t *)((uintptr_t)_base_ + _off_)
+
 struct heap64kb_t * heap64kb_init(void * const ptr, const size_t size) {
     struct heap64kb_t * const obj = (struct heap64kb_t *)ptr;
     struct heap64kbFreeHeader_t * const hdr = (struct heap64kbFreeHeader_t *)((uintptr_t)ptr + sizeof(struct heap64kb_t));
@@ -55,7 +58,7 @@ void heap64kb_free(struct heap64kb_t * const obj, void * const ptr) {
 
     /* head insertion */
     if (hdr->size < obj->head->size) {
-        hdr->next = (uint16_t)((uintptr_t)obj->head - (uintptr_t)obj);
+        hdr->next = heap64kb_hdr_to_offset(obj, obj->head);
         obj->head = hdr;
         return;
     }
@@ -63,10 +66,10 @@ void heap64kb_free(struct heap64kb_t * const obj, void * const ptr) {
     /* body insertion */
     prev = obj->head;
     while (prev->next) {
-        struct heap64kbFreeHeader_t * const next = (struct heap64kbFreeHeader_t *)((uintptr_t)obj + prev->next);
+        struct heap64kbFreeHeader_t * const next = heap64kb_offset_to_freehdr(obj, prev->next);
         if (next->size >= hdr->size) {
-            hdr->next = (uint16_t)((uintptr_t)next - (uintptr_t)obj);
-            prev->next = (uint16_t)((uintptr_t)hdr - (uintptr_t)obj);
+            hdr->next = heap64kb_hdr_to_offset(obj, next);
+            prev->next = heap64kb_hdr_to_offset(obj, hdr);
             return;
         }
         prev = next;
@@ -74,7 +77,7 @@ void heap64kb_free(struct heap64kb_t * const obj, void * const ptr) {
 
     /* tail insertion */
     hdr->next = 0;
-    prev->next = (uint16_t)((uintptr_t)hdr - (uintptr_t)obj);
+    prev->next = heap64kb_hdr_to_offset(obj, hdr);
 }
 
 void* heap64kb_alloc(struct heap64kb_t * const obj, const size_t size) {
@@ -101,7 +104,7 @@ void* heap64kb_alloc(struct heap64kb_t * const obj, const size_t size) {
             if (prev) {
                 prev->next = next->next;
             } else if (next->next) {
-                obj->head = (struct heap64kbFreeHeader_t *)((uintptr_t)obj + next->next);
+                obj->head = heap64kb_offset_to_freehdr(obj, next->next);
             } else {
                 obj->head = 0;
             }
@@ -109,18 +112,20 @@ void* heap64kb_alloc(struct heap64kb_t * const obj, const size_t size) {
             /* put remainder of block in free list */
             if (left >= sizeof(struct heap64kbFreeHeader_t)) {
                 struct heap64kbHeader_t * const splitHeader = (struct heap64kbHeader_t *)(ptr + requestSize);
-
                 next->size -= left;
-
                 splitHeader->size = left | HEAP64KB_MASK_IN_USE;
-
                 heap64kb_free(obj, splitHeader + 1);
             }
             next->size |= HEAP64KB_MASK_IN_USE;
             return ptr;
         }
         prev = next;
-        next = (struct heap64kbFreeHeader_t *)((uintptr_t)obj + next->next);
+        next = heap64kb_offset_to_freehdr(obj, next->next);
     } while (prev->next);
     return 0;
 }
+
+#undef heap64kb_offset_to_freehdr
+#undef heap64kb_hdr_to_offset
+
+#undef HEAP64KB_MASK_IN_USE
